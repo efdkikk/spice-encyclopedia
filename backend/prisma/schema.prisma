@@ -1,0 +1,439 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-arm64-openssl-3.0.x"]
+  previewFeatures = ["jsonProtocol", "fullTextSearch"]
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// User Model
+model User {
+  id              String           @id @default(cuid())
+  email           String           @unique
+  password        String
+  name            String
+  avatarUrl       String?
+  bio             String?
+  preferences     Json?
+  isActive        Boolean          @default(false)
+  isEmailVerified Boolean          @default(false)
+  role            String           @default("user")
+  lastLogin       DateTime?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  // Relations
+  spices          Spice[]
+  collections     Collection[]
+  comments        Comment[]
+  ratings         Rating[]
+  sessions        UserSession[]
+  refreshTokens   RefreshToken[]
+  apiKeys         ApiKey[]
+  securityEvents  SecurityEvent[]
+  // RBAC relations
+  permissions     UserPermission[]
+  @@index([email], name: "idx_user_email")
+}
+
+// Spice Model
+model Spice {
+  id            String           @id @default(cuid())
+  name          String           @unique
+  scientificName String?
+  description   String
+  origin        String[]
+  imageUrl      String
+  flavorProfile Json
+  heatLevel     Int
+  culinaryUses  String[]
+  substitutes   String[]
+  pairings      String[]
+  seasonality   String
+  isPopular     Boolean          @default(false)
+  authorId      String?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  // Relations
+  author        User?            @relation(fields: [authorId], references: [id])
+  properties    MedicinalProperty[]
+  nutrition     NutritionalInfo[]
+  recipes       RecipeSpice[]
+  comments      Comment[]
+  ratings       Rating[]
+  tags          Tag[]            @relation(fields: [tagIds], references: [id])
+  tagIds        String[]
+  @@index([name], name: "idx_spice_name")
+  @@index([isPopular], name: "idx_spice_popular")
+  @@fulltext([name, description, scientificName], name: "spice_search")
+}
+
+// Medicinal Property Model
+model MedicinalProperty {
+  id          String       @id @default(cuid())
+  spiceId     String
+  property    String
+  description String
+  evidence    String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  // Relations
+  spice       Spice        @relation(fields: [spiceId], references: [id], onDelete: Cascade)
+  @@index([spiceId], name: "idx_property_spice")
+}
+
+// Nutritional Information Model
+model NutritionalInfo {
+  id         String       @id @default(cuid())
+  spiceId    String
+  nutrient   String
+  amount     Float
+  unit       String
+  dailyValue Float?
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+  // Relations
+  spice      Spice        @relation(fields: [spiceId], references: [id], onDelete: Cascade)
+  @@index([spiceId], name: "idx_nutrition_spice")
+}
+
+// Recipe Model
+model Recipe {
+  id            String           @id @default(cuid())
+  title         String
+  description   String
+  authorId      String
+  imageUrl      String
+  cuisine       String
+  difficulty    String
+  prepTime      Int
+  cookTime      Int
+  servings      Int
+  calories      Int?
+  isFeatured    Boolean          @default(false)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  // Relations
+  author        User             @relation(fields: [authorId], references: [id])
+  spices        RecipeSpice[]
+  ingredients   Ingredient[]
+  instructions  Instruction[]
+  nutrition     RecipeNutrition[]
+  comments      Comment[]
+  ratings       Rating[]
+  tags          RecipeTag[]
+  collections   CollectionRecipe[]
+  @@index([title], name: "idx_recipe_title")
+  @@index([isFeatured], name: "idx_recipe_featured")
+  @@index([authorId], name: "idx_recipe_author")
+  @@fulltext([title, description, cuisine], name: "recipe_search")
+}
+
+// Recipe-Spice Association Model
+model RecipeSpice {
+  id          String       @id @default(cuid())
+  recipeId    String
+  spiceId     String
+  quantity    String
+  unit        String
+  notes       String?
+  // Relations
+  recipe      Recipe       @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  spice       Spice        @relation(fields: [spiceId], references: [id], onDelete: Cascade)
+  @@unique([recipeId, spiceId])
+  @@index([recipeId], name: "idx_recipe_spice_recipe")
+  @@index([spiceId], name: "idx_recipe_spice_spice")
+}
+
+// Ingredient Model
+model Ingredient {
+  id          String       @id @default(cuid())
+  recipeId    String
+  name        String
+  quantity    String
+  unit        String
+  order       Int
+  // Relations
+  recipe      Recipe       @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  @@index([recipeId], name: "idx_ingredient_recipe")
+}
+
+// Instruction Model
+model Instruction {
+  id          String       @id @default(cuid())
+  recipeId    String
+  stepNumber  Int
+  content     String
+  duration    Int?
+  // Relations
+  recipe      Recipe       @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  @@index([recipeId, stepNumber], name: "idx_instruction_order")
+}
+
+// Recipe Nutrition Model
+model RecipeNutrition {
+  id         String       @id @default(cuid())
+  recipeId   String
+  nutrient   String
+  amount     Float
+  unit       String
+  dailyValue Float?
+  // Relations
+  recipe     Recipe       @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  @@index([recipeId], name: "idx_recipe_nutrition_recipe")
+}
+
+// Tag Model
+model Tag {
+  id        String       @id @default(cuid())
+  name      String       @unique
+  type      String?      @default("general")
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  // Relations
+  @@index([name], name: "idx_tag_name")
+}
+
+// Recipe-Tag Association Model
+model RecipeTag {
+  id          String       @id @default(cuid())
+  recipeId    String
+  tagId       String
+  // Relations
+  recipe      Recipe       @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  tag         Tag          @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  @@unique([recipeId, tagId])
+  @@index([recipeId], name: "idx_recipe_tag_recipe")
+  @@index([tagId], name: "idx_recipe_tag_tag")
+}
+
+// Rating Model
+model Rating {
+  id        String       @id @default(cuid())
+  userId    String
+  spiceId   String?
+  recipeId  String?
+  value     Int
+  review    String?
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  // Relations
+  user      User         @relation(fields: [userId], references: [id])
+  spice     Spice?       @relation(fields: [spiceId], references: [id], onDelete: Cascade)
+  recipe    Recipe?      @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  @@unique([userId, spiceId])
+  @@unique([userId, recipeId])
+  @@index([userId], name: "idx_rating_user")
+  @@index([spiceId], name: "idx_rating_spice")
+  @@index([recipeId], name: "idx_rating_recipe")
+}
+
+// Comment Model
+model Comment {
+  id        String       @id @default(cuid())
+  userId    String
+  spiceId   String?
+  recipeId  String?
+  content   String
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  // Relations
+  user      User         @relation(fields: [userId], references: [id])
+  spice     Spice?       @relation(fields: [spiceId], references: [id], onDelete: Cascade)
+  recipe    Recipe?      @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  @@index([userId], name: "idx_comment_user")
+  @@index([spiceId], name: "idx_comment_spice")
+  @@index([recipeId], name: "idx_comment_recipe")
+}
+
+// Collection Model (for saving favorite spices and recipes)
+model Collection {
+  id          String             @id @default(cuid())
+  userId      String
+  name        String
+  description String?
+  isPublic    Boolean            @default(false)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  // Relations
+  user        User               @relation(fields: [userId], references: [id])
+  recipes     CollectionRecipe[]
+  spices      CollectionSpice[]
+  @@index([userId], name: "idx_collection_user")
+}
+
+// Collection-Recipe Association Model
+model CollectionRecipe {
+  id          String       @id @default(cuid())
+  collectionId String
+  recipeId    String
+  // Relations
+  collection  Collection   @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  recipe      Recipe       @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  @@unique([collectionId, recipeId])
+  @@index([collectionId], name: "idx_collection_recipe_collection")
+  @@index([recipeId], name: "idx_collection_recipe_recipe")
+}
+
+// Collection-Spice Association Model
+model CollectionSpice {
+  id          String       @id @default(cuid())
+  collectionId String
+  spiceId     String
+  // Relations
+  collection  Collection   @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  spice       Spice        @relation(fields: [spiceId], references: [id], onDelete: Cascade)
+  @@unique([collectionId, spiceId])
+  @@index([collectionId], name: "idx_collection_spice_collection")
+  @@index([spiceId], name: "idx_collection_spice_spice")
+}
+
+// Favorite Model (Quick access to favorite spices and recipes)
+model Favorite {
+  id        String       @id @default(cuid())
+  userId    String
+  spiceId   String?
+  recipeId  String?
+  createdAt DateTime     @default(now())
+  // Relations
+  user      User         @relation(fields: [userId], references: [id])
+  spice     Spice?       @relation(fields: [spiceId], references: [id], onDelete: Cascade)
+  recipe    Recipe?      @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  @@unique([userId, spiceId])
+  @@unique([userId, recipeId])
+  @@index([userId], name: "idx_favorite_user")
+}
+
+// RBAC Models
+model Permission {
+  id          String       @id @default(cuid())
+  name        String       @unique
+  description String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  // Relations
+  rolePermissions RolePermission[]
+  userPermissions UserPermission[]
+  @@index([name], name: "idx_permission_name")
+}
+
+model Role {
+  id          String       @id @default(cuid())
+  name        String       @unique
+  description String?
+  isDefault   Boolean      @default(false)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  // Relations
+  permissions RolePermission[]
+  @@index([name], name: "idx_role_name")
+  @@index([isDefault], name: "idx_role_default")
+}
+
+model RolePermission {
+  id          String       @id @default(cuid())
+  roleId      String
+  permissionId String
+  createdAt   DateTime     @default(now())
+  // Relations
+  role        Role         @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission  Permission   @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  @@unique([roleId, permissionId])
+  @@index([roleId], name: "idx_role_permission_role")
+  @@index([permissionId], name: "idx_role_permission_permission")
+}
+
+model UserPermission {
+  id          String       @id @default(cuid())
+  userId      String
+  permissionId String
+  createdAt   DateTime     @default(now())
+  // Relations
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permission  Permission   @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  @@unique([userId, permissionId])
+  @@index([userId], name: "idx_user_permission_user")
+  @@index([permissionId], name: "idx_user_permission_permission")
+}
+
+// Security Models
+model RefreshToken {
+  id        String       @id @default(cuid())
+  userId    String
+  token     String       @unique
+  expiresAt DateTime
+  createdAt DateTime     @default(now())
+  // Relations
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId], name: "idx_refresh_token_user")
+  @@index([expiresAt], name: "idx_refresh_token_expires")
+}
+
+model AccessToken {
+  id        String       @id @default(cuid())
+  userId    String
+  token     String       @unique
+  expiresAt DateTime
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime     @default(now())
+  // Relations
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId], name: "idx_access_token_user")
+  @@index([expiresAt], name: "idx_access_token_expires")
+}
+
+model UserSession {
+  id        String       @id @default(cuid())
+  userId    String
+  sessionId String       @unique
+  ipAddress String?
+  userAgent String?
+  lastActive DateTime
+  expiresAt DateTime
+  createdAt DateTime     @default(now())
+  // Relations
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId], name: "idx_user_session_user")
+  @@index([lastActive], name: "idx_user_session_active")
+  @@index([expiresAt], name: "idx_user_session_expires")
+}
+
+model SecurityEvent {
+  id        String       @id @default(cuid())
+  userId    String?
+  type      String
+  data      Json?
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime     @default(now())
+  // Relations
+  user      User?        @relation(fields: [userId], references: [id])
+  @@index([userId], name: "idx_security_event_user")
+  @@index([type], name: "idx_security_event_type")
+  @@index([createdAt], name: "idx_security_event_time")
+}
+
+// API Key Model
+model ApiKey {
+  id        String       @id @default(cuid())
+  userId    String
+  key       String       @unique
+  name      String
+  permissions Json
+  expiresAt DateTime?
+  isActive  Boolean      @default(true)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  // Relations
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId], name: "idx_api_key_user")
+  @@index([isActive], name: "idx_api_key_active")
+  @@index([expiresAt], name: "idx_api_key_expires")
+}
